@@ -9,10 +9,16 @@ const DEVICE_PROFILE = {
   scenario: "实时字幕",
   runtime: "WASM/SIMD 优先，WebGPU 检测到再启用",
   audio: "16 kHz mono PCM, 0.5s chunk",
-  modelBudget: "300-350 MB 总包",
-  asrModel: "Whisper tiny multilingual INT8/4-bit",
-  translateModel: "中英双向 Marian/OPUS 小模型 INT8",
+  modelBudget: "首次联网下载，后续尽量缓存",
+  asrModel: "Xenova/whisper-tiny",
+  translateModel: "Xenova/opus-mt-zh-en + Xenova/opus-mt-en-zh",
 };
+const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+const TRANSLATOR_MODELS = {
+  "zh-CN->en-US": "Xenova/opus-mt-zh-en",
+  "en-US->zh-CN": "Xenova/opus-mt-en-zh",
+};
+const ASR_MODEL = "Xenova/whisper-tiny";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -38,6 +44,9 @@ const els = {
   persistStorage: $("#persistStorage"),
   asrModelInput: $("#asrModelInput"),
   translatorModelInput: $("#translatorModelInput"),
+  loadTranslatorModels: $("#loadTranslatorModels"),
+  loadAsrModel: $("#loadAsrModel"),
+  modelProgress: $("#modelProgress"),
   modelPlan: $("#modelPlan"),
   modelState: $("#modelState"),
   historyList: $("#historyList"),
@@ -56,6 +65,15 @@ const state = {
   finalTranscript: "",
   interimTranscript: "",
   history: loadJson("history", []),
+  transformers: null,
+  translatorPipelines: {},
+  translatorLoading: null,
+  asrPipeline: null,
+  asrLoading: null,
+  audioChunks: [],
+  audioSampleCount: 0,
+  asrBusy: false,
+  lastAsrAt: 0,
   settings: loadJson("settings", {
     sourceLang: "zh-CN",
     targetLang: "en-US",
@@ -145,9 +163,9 @@ function translateLocally(text) {
   return translated;
 }
 
-function runTranslation(text = getActiveInput()) {
+async function runTranslation(text = getActiveInput()) {
   const source = text.trim();
-  const translated = translateLocally(source);
+  const translated = await translateText(source);
   els.translationOutput.textContent = translated;
   if (source && translated) {
     state.history = [
@@ -162,6 +180,115 @@ function runTranslation(text = getActiveInput()) {
     saveJson("history", state.history);
     renderHistory();
   }
+}
+
+async function translateText(source) {
+  if (!source) return "";
+  const sourceLang = els.sourceLang.value;
+  const targetLang = els.targetLang.value;
+  if (sourceLang === targetLang) return source;
+
+  const pair = `${sourceLang}->${targetLang}`;
+  const pipe = state.translatorPipelines[pair];
+  if (!pipe) {
+    return translateLocally(source);
+  }
+
+  try {
+    setBadge(els.translatorBadge, "翻译中", "good");
+    const output = await pipe(source, { max_new_tokens: 96 });
+    const first = Array.isArray(output) ? output[0] : output;
+    const translated = first?.translation_text ?? first?.generated_text ?? String(output);
+    setBadge(els.translatorBadge, "本地模型", "good");
+    return translated;
+  } catch (error) {
+    console.warn("Model translation failed", error);
+    setBadge(els.translatorBadge, "模型失败", "bad");
+    return translateLocally(source);
+  }
+}
+
+async function loadTransformers() {
+  if (!state.transformers) {
+    setModelProgress("加载 Transformers.js...");
+    state.transformers = await import(TRANSFORMERS_CDN);
+    state.transformers.env.allowRemoteModels = true;
+    state.transformers.env.allowLocalModels = false;
+  }
+  return state.transformers;
+}
+
+function setModelProgress(text) {
+  els.modelProgress.textContent = text;
+}
+
+function progressText(kind, event) {
+  if (!event) return `${kind}: 下载中`;
+  if (event.status === "progress") {
+    const loaded = formatBytes(event.loaded ?? 0);
+    const total = formatBytes(event.total ?? 0);
+    const file = event.file ? ` · ${event.file}` : "";
+    return `${kind}: ${loaded} / ${total}${file}`;
+  }
+  if (event.status) return `${kind}: ${event.status}${event.file ? ` · ${event.file}` : ""}`;
+  return `${kind}: 下载中`;
+}
+
+async function loadTranslatorModels() {
+  if (state.translatorLoading) return state.translatorLoading;
+  state.translatorLoading = (async () => {
+    els.loadTranslatorModels.disabled = true;
+    setBadge(els.translatorBadge, "下载中", "warn");
+    const { pipeline } = await loadTransformers();
+    const options = {
+      dtype: "q8",
+      progress_callback: (event) => setModelProgress(progressText("翻译模型", event)),
+    };
+    state.translatorPipelines["zh-CN->en-US"] = await pipeline(
+      "translation",
+      TRANSLATOR_MODELS["zh-CN->en-US"],
+      options,
+    );
+    state.translatorPipelines["en-US->zh-CN"] = await pipeline(
+      "translation",
+      TRANSLATOR_MODELS["en-US->zh-CN"],
+      options,
+    );
+    setBadge(els.translatorBadge, "本地模型", "good");
+    setModelProgress("翻译模型已就绪。之后断网时能否直接使用，取决于 Huawei Browser 是否保留模型缓存。");
+    els.loadTranslatorModels.textContent = "翻译模型已就绪";
+    if (getActiveInput()) await runTranslation();
+  })().catch((error) => {
+    console.error("Translator model load failed", error);
+    setBadge(els.translatorBadge, "下载失败", "bad");
+    setModelProgress(`翻译模型下载失败：${error.message ?? error}`);
+    els.loadTranslatorModels.disabled = false;
+    state.translatorLoading = null;
+  });
+  return state.translatorLoading;
+}
+
+async function loadAsrModel() {
+  if (state.asrLoading) return state.asrLoading;
+  state.asrLoading = (async () => {
+    els.loadAsrModel.disabled = true;
+    setBadge(els.asrBadge, "ASR 下载中", "warn");
+    const { pipeline } = await loadTransformers();
+    state.asrPipeline = await pipeline("automatic-speech-recognition", ASR_MODEL, {
+      dtype: "q8",
+      progress_callback: (event) => setModelProgress(progressText("ASR 模型", event)),
+    });
+    setBadge(els.asrBadge, "ASR 模型", "good");
+    els.loadAsrModel.textContent = "ASR 模型已就绪";
+    setModelProgress("ASR 模型已就绪。点击开始后，会用最近几秒音频生成字幕。");
+  })().catch((error) => {
+    console.error("ASR model load failed", error);
+    setBadge(els.asrBadge, "ASR 下载失败", "bad");
+    setModelProgress(`ASR 模型下载失败：${error.message ?? error}`);
+    els.loadAsrModel.disabled = false;
+    state.asrLoading = null;
+  });
+  return state.asrLoading;
 }
 
 function getActiveInput() {
@@ -358,6 +485,7 @@ async function startMicrophoneMeter() {
           }
           if (samples) {
             state.pcmChunks += 1;
+            handlePcmChunk(samples);
             if (state.pcmChunks === 1 && sampleRate === 16000) {
               setBadge(els.asrBadge, "16k PCM", "good");
             }
@@ -380,6 +508,62 @@ async function startMicrophoneMeter() {
     setBadge(els.asrBadge, "麦克风被拒绝", "bad");
     els.startButton.disabled = false;
     els.stopButton.disabled = true;
+  }
+}
+
+function handlePcmChunk(samples) {
+  if (!state.asrPipeline) return;
+  state.audioChunks.push(samples);
+  state.audioSampleCount += samples.length;
+  const maxSamples = 16000 * 6;
+  while (state.audioSampleCount > maxSamples && state.audioChunks.length > 1) {
+    const removed = state.audioChunks.shift();
+    state.audioSampleCount -= removed.length;
+  }
+
+  const now = Date.now();
+  if (state.audioSampleCount >= 16000 * 2 && now - state.lastAsrAt > 1800 && !state.asrBusy) {
+    state.lastAsrAt = now;
+    runAsrOnRecentAudio();
+  }
+}
+
+function concatRecentAudio() {
+  const audio = new Float32Array(state.audioSampleCount);
+  let offset = 0;
+  for (const chunk of state.audioChunks) {
+    audio.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return audio;
+}
+
+async function runAsrOnRecentAudio() {
+  if (!state.asrPipeline || state.asrBusy) return;
+  state.asrBusy = true;
+  try {
+    setBadge(els.asrBadge, "识别中", "good");
+    const audio = concatRecentAudio();
+    const language = els.sourceLang.value === "zh-CN" ? "chinese" : "english";
+    const result = await state.asrPipeline(audio, {
+      language,
+      task: "transcribe",
+      chunk_length_s: 4,
+      stride_length_s: 1,
+    });
+    const text = (typeof result === "string" ? result : result?.text ?? "").trim();
+    if (text) {
+      state.finalTranscript = text;
+      state.interimTranscript = "";
+      renderText();
+      await runTranslation(text);
+    }
+    setBadge(els.asrBadge, "ASR 模型", "good");
+  } catch (error) {
+    console.warn("ASR failed", error);
+    setBadge(els.asrBadge, "ASR 失败", "bad");
+  } finally {
+    state.asrBusy = false;
   }
 }
 
@@ -492,6 +676,8 @@ function stopCapture() {
     state.audioContext = null;
   }
   state.analyser = null;
+  state.audioChunks = [];
+  state.audioSampleCount = 0;
 }
 
 function syncSettings() {
@@ -588,6 +774,8 @@ function bindEvents() {
   els.startButton.addEventListener("click", startCapture);
   els.stopButton.addEventListener("click", stopCapture);
   els.translateButton.addEventListener("click", () => runTranslation());
+  els.loadTranslatorModels.addEventListener("click", loadTranslatorModels);
+  els.loadAsrModel.addEventListener("click", loadAsrModel);
 
   els.manualInput.addEventListener("input", () => {
     if (els.speechMode.value === "manual") runTranslation(els.manualInput.value);
@@ -627,7 +815,7 @@ async function boot() {
   await registerServiceWorker();
   await detectCapabilities();
   await renderModelState();
-  setBadge(els.translatorBadge, "本地演示", "warn");
+  setBadge(els.translatorBadge, "待下载", "warn");
 }
 
 boot();

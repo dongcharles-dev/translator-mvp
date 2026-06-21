@@ -1,4 +1,4 @@
-const CACHE_NAME = "mate30-translator-pwa-v3";
+const CACHE_NAME = "mate30-translator-pwa-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -34,6 +34,11 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

@@ -8,8 +8,9 @@
 - 设备能力检测：安全上下文、麦克风、AudioWorklet、MediaRecorder、WASM、WebGPU、浏览器 ASR。
 - 麦克风采集：优先使用 `AudioWorklet` 输出 PCM 分段和实时音量，不支持时降级到 `AnalyserNode`。
 - 浏览器 ASR：如果当前浏览器支持 `SpeechRecognition`，会自动接入；如果支持 `processLocally`，优先请求端侧识别。
-- 离线翻译适配层：目前是短语级本地演示规则，后续替换为 ONNX/WASM/WebGPU 模型。
-- 模型包导入：可把 ASR/翻译模型文件保存到 IndexedDB，供后续推理适配器读取。
+- 离线翻译适配层：点击“下载翻译模型”后，会下载 `Xenova/opus-mt-zh-en` 和 `Xenova/opus-mt-en-zh` 并在浏览器里用 Transformers.js/ONNX Runtime Web 推理。
+- ASR 模型：点击“下载 ASR 模型”后，会下载 `Xenova/whisper-tiny`，点击开始后尝试用最近几秒音频生成字幕。
+- 高级模型包导入：文件选择框目前只把模型文件保存到 IndexedDB，供后续自定义推理适配器读取。
 
 ## 本地运行
 
@@ -46,8 +47,8 @@ Huawei Browser 真机测试建议部署到 HTTPS 静态站点，例如 Cloudflar
 
 性能优先，推荐总模型包控制在 300-350 MB：
 
-- ASR：Whisper tiny multilingual INT8/4-bit，目标 50-90 MB。
-- 翻译：中英双向 Marian/OPUS 小模型 INT8，目标 80-120 MB/方向。
+- ASR：`Xenova/whisper-tiny`。
+- 翻译：`Xenova/opus-mt-zh-en` 和 `Xenova/opus-mt-en-zh`。
 - 音频输入：AudioWorklet 重采样到 16 kHz mono PCM，每 0.5 秒输出一段。
 - 实时字幕策略：前端聚合 2-4 秒滑窗，0.5 秒步进刷新字幕。
 

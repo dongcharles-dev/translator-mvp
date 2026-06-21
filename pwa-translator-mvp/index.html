@@ -98,13 +98,18 @@
             <span class="badge good">性能优先</span>
           </div>
           <div class="model-plan" id="modelPlan"></div>
+          <div class="model-actions">
+            <button id="loadTranslatorModels" type="button">下载翻译模型</button>
+            <button id="loadAsrModel" type="button">下载 ASR 模型</button>
+          </div>
+          <div class="model-progress" id="modelProgress">首次下载需要联网；完成后浏览器会尽量缓存模型。</div>
           <div class="model-slots">
             <label class="file-drop">
-              <span>ASR 模型</span>
+              <span>高级导入：ASR 文件暂存</span>
               <input id="asrModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
             </label>
             <label class="file-drop">
-              <span>翻译模型</span>
+              <span>高级导入：翻译文件暂存</span>
               <input id="translatorModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
             </label>
           </div>

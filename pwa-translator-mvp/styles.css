@@ -361,6 +361,31 @@ h2 {
   margin-bottom: 12px;
 }
 
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.model-actions button {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.model-progress {
+  min-height: 38px;
+  border: 1px solid #dfe9e5;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 9px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
 .plan-row {
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
