@@ -1,0 +1,19 @@
+{
+  "name": "离线翻译台",
+  "short_name": "离线翻译",
+  "description": "Mate30 Pro offline speech translation PWA MVP",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef5f1",
+  "theme_color": "#0f766e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

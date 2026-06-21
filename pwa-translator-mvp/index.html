@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="description" content="Mate30 Pro offline speech translation PWA MVP" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>离线翻译台</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">HUAWEI Mate30 Pro MVP</p>
+          <h1>离线翻译台</h1>
+        </div>
+        <div class="top-actions">
+          <span class="status-pill" id="offlineStatus">检测中</span>
+          <button class="icon-button" id="installButton" type="button" title="安装到桌面" hidden>
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="control-strip" aria-label="翻译控制">
+        <label>
+          <span>源语言</span>
+          <select id="sourceLang">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
+        <button class="swap-button" id="swapLangs" type="button" title="交换语言">⇄</button>
+        <label>
+          <span>目标语言</span>
+          <select id="targetLang">
+            <option value="en-US">English</option>
+            <option value="zh-CN">中文</option>
+          </select>
+        </label>
+        <label>
+          <span>识别方式</span>
+          <select id="speechMode">
+            <option value="auto">自动</option>
+            <option value="browser">浏览器 ASR</option>
+            <option value="manual">文本输入</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="stage" aria-label="实时翻译">
+        <div class="panel transcript-panel">
+          <div class="panel-header">
+            <h2>原文</h2>
+            <span id="asrBadge" class="badge neutral">待机</span>
+          </div>
+          <div class="live-meter" aria-hidden="true">
+            <span id="meterFill"></span>
+          </div>
+          <div class="text-output" id="sourceOutput" aria-live="polite"></div>
+          <textarea id="manualInput" rows="4" placeholder="也可以直接输入文本进行离线翻译测试"></textarea>
+          <div class="button-row">
+            <button class="primary" id="startButton" type="button">开始</button>
+            <button id="stopButton" type="button" disabled>停止</button>
+            <button id="translateButton" type="button">翻译文本</button>
+          </div>
+        </div>
+
+        <div class="panel translation-panel">
+          <div class="panel-header">
+            <h2>译文</h2>
+            <span id="translatorBadge" class="badge neutral">本地演示</span>
+          </div>
+          <div class="text-output translated" id="translationOutput" aria-live="polite"></div>
+          <div class="history" id="historyList"></div>
+        </div>
+      </section>
+
+      <section class="grid" aria-label="设备和模型">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>设备检测</h2>
+            <button id="refreshCapabilities" type="button">刷新</button>
+          </div>
+          <div class="capability-list" id="capabilityList"></div>
+          <div class="storage-line">
+            <span id="storageText">存储检测中</span>
+            <button id="persistStorage" type="button">持久化</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>模型包</h2>
+            <span class="badge good">性能优先</span>
+          </div>
+          <div class="model-plan" id="modelPlan"></div>
+          <div class="model-slots">
+            <label class="file-drop">
+              <span>ASR 模型</span>
+              <input id="asrModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
+            </label>
+            <label class="file-drop">
+              <span>翻译模型</span>
+              <input id="translatorModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
+            </label>
+          </div>
+          <div class="model-state" id="modelState"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
