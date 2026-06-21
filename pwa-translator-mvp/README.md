@@ -37,7 +37,7 @@ Huawei Browser 真机测试建议部署到 HTTPS 静态站点，例如 Cloudflar
 
 - WebGPU：可用就后续尝试 GPU 加速；不可用就保持 WASM。
 - 浏览器 ASR：可用可作为快速字幕通道；不可用就走自带 ASR 模型。
-- 端侧 ASR：如果 Huawei Browser 暴露本地语音包能力，可作为额外优化。
+- 浏览器本地 ASR：如果 Huawei Browser 暴露本地语音包检测能力，可作为额外优化。显示不可检测不影响 `Xenova/whisper-tiny` 这条自带 ASR 模型路线。
 - 存储配额：若低于 500 MB，需要缩小模型包或分语言包下载。
 
 ## Mate30 Pro 侧重点

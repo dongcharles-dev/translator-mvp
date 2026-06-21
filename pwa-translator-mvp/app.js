@@ -433,7 +433,13 @@ async function detectCapabilities() {
     ["WebAssembly", typeof WebAssembly === "object", typeof WebAssembly === "object" ? "WASM 推理基础可用" : "不可用"],
     ["WebGPU", !!navigator.gpu, navigator.gpu ? "可尝试 GPU 推理" : "按 WASM 路线运行"],
     ["浏览器 ASR", !!SpeechRecognition, SpeechRecognition ? "SpeechRecognition 可用" : "不可用"],
-    ["端侧 ASR", !!SpeechRecognition?.available, SpeechRecognition?.available ? "可检测本地语音包" : "不可检测"],
+    [
+      "浏览器本地ASR",
+      !!SpeechRecognition?.available,
+      SpeechRecognition?.available
+        ? "可检测浏览器本地语音包"
+        : "未暴露语音包检测 API，不影响下载 ASR 模型",
+    ],
   ];
 
   renderCapabilities(capabilities);
