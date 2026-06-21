@@ -1,4 +1,4 @@
-const CACHE_NAME = "mate30-translator-pwa-v4";
+const CACHE_NAME = "mate30-translator-pwa-v5";
 const ASSETS = [
   "./",
   "./index.html",

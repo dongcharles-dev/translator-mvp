@@ -11,6 +11,7 @@
 - 离线翻译适配层：点击“下载翻译模型”后，会下载 `Xenova/opus-mt-zh-en` 和 `Xenova/opus-mt-en-zh` 并在浏览器里用 Transformers.js/ONNX Runtime Web 推理。
 - ASR 模型：点击“下载 ASR 模型”后，会下载 `Xenova/whisper-tiny`，点击开始后尝试用最近几秒音频生成字幕。
 - 高级模型包导入：文件选择框目前只把模型文件保存到 IndexedDB，供后续自定义推理适配器读取。
+- “未手动导入文件”不代表按钮下载的模型不可用。按钮下载的模型由 Transformers.js 和浏览器缓存管理，高级导入区只是预留入口。
 
 ## 本地运行
 

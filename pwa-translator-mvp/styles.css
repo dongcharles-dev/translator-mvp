@@ -386,6 +386,48 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.runtime-state {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.runtime-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid #dfe9e5;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.runtime-item strong {
+  color: var(--ink);
+}
+
+.advanced-import {
+  border-top: 1px solid #e4ece8;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.advanced-import summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.advanced-import[open] summary {
+  margin-bottom: 10px;
+}
+
 .plan-row {
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
@@ -480,5 +522,9 @@ h2 {
 
   .plan-row {
     grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .runtime-state {
+    grid-template-columns: 1fr;
   }
 }

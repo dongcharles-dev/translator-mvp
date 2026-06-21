@@ -101,9 +101,13 @@
           <div class="model-actions">
             <button id="loadTranslatorModels" type="button">下载翻译模型</button>
             <button id="loadAsrModel" type="button">下载 ASR 模型</button>
+            <button id="selfTestModels" type="button">翻译自检</button>
           </div>
+          <div class="runtime-state" id="runtimeState"></div>
           <div class="model-progress" id="modelProgress">首次下载需要联网；完成后浏览器会尽量缓存模型。</div>
-          <div class="model-slots">
+          <details class="advanced-import">
+            <summary>高级：手动导入模型文件</summary>
+            <div class="model-slots">
             <label class="file-drop">
               <span>高级导入：ASR 文件暂存</span>
               <input id="asrModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
@@ -112,8 +116,9 @@
               <span>高级导入：翻译文件暂存</span>
               <input id="translatorModelInput" type="file" multiple accept=".onnx,.wasm,.bin,.json,.tflite" />
             </label>
-          </div>
-          <div class="model-state" id="modelState"></div>
+            </div>
+            <div class="model-state" id="modelState"></div>
+          </details>
         </div>
       </section>
     </main>

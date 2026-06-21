@@ -46,6 +46,8 @@ const els = {
   translatorModelInput: $("#translatorModelInput"),
   loadTranslatorModels: $("#loadTranslatorModels"),
   loadAsrModel: $("#loadAsrModel"),
+  selfTestModels: $("#selfTestModels"),
+  runtimeState: $("#runtimeState"),
   modelProgress: $("#modelProgress"),
   modelPlan: $("#modelPlan"),
   modelState: $("#modelState"),
@@ -79,6 +81,11 @@ const state = {
     targetLang: "en-US",
     speechMode: "auto",
   }),
+};
+
+const runtimeStatus = {
+  translator: "未下载",
+  asr: "未下载",
 };
 
 const phraseBook = {
@@ -222,6 +229,24 @@ function setModelProgress(text) {
   els.modelProgress.textContent = text;
 }
 
+function renderRuntimeState() {
+  const rows = [
+    ["翻译模型", runtimeStatus.translator],
+    ["ASR 模型", runtimeStatus.asr],
+  ];
+  els.runtimeState.innerHTML = "";
+  for (const [label, value] of rows) {
+    const item = document.createElement("div");
+    item.className = "runtime-item";
+    const title = document.createElement("strong");
+    title.textContent = label;
+    const text = document.createElement("span");
+    text.textContent = value;
+    item.append(title, text);
+    els.runtimeState.append(item);
+  }
+}
+
 function progressText(kind, event) {
   if (!event) return `${kind}: 下载中`;
   if (event.status === "progress") {
@@ -238,6 +263,8 @@ async function loadTranslatorModels() {
   if (state.translatorLoading) return state.translatorLoading;
   state.translatorLoading = (async () => {
     els.loadTranslatorModels.disabled = true;
+    runtimeStatus.translator = "下载中";
+    renderRuntimeState();
     setBadge(els.translatorBadge, "下载中", "warn");
     const { pipeline } = await loadTransformers();
     const options = {
@@ -255,12 +282,16 @@ async function loadTranslatorModels() {
       options,
     );
     setBadge(els.translatorBadge, "本地模型", "good");
+    runtimeStatus.translator = "已加载";
+    renderRuntimeState();
     setModelProgress("翻译模型已就绪。之后断网时能否直接使用，取决于 Huawei Browser 是否保留模型缓存。");
     els.loadTranslatorModels.textContent = "翻译模型已就绪";
     if (getActiveInput()) await runTranslation();
   })().catch((error) => {
     console.error("Translator model load failed", error);
     setBadge(els.translatorBadge, "下载失败", "bad");
+    runtimeStatus.translator = "失败";
+    renderRuntimeState();
     setModelProgress(`翻译模型下载失败：${error.message ?? error}`);
     els.loadTranslatorModels.disabled = false;
     state.translatorLoading = null;
@@ -272,6 +303,8 @@ async function loadAsrModel() {
   if (state.asrLoading) return state.asrLoading;
   state.asrLoading = (async () => {
     els.loadAsrModel.disabled = true;
+    runtimeStatus.asr = "下载中";
+    renderRuntimeState();
     setBadge(els.asrBadge, "ASR 下载中", "warn");
     const { pipeline } = await loadTransformers();
     state.asrPipeline = await pipeline("automatic-speech-recognition", ASR_MODEL, {
@@ -279,16 +312,44 @@ async function loadAsrModel() {
       progress_callback: (event) => setModelProgress(progressText("ASR 模型", event)),
     });
     setBadge(els.asrBadge, "ASR 模型", "good");
+    runtimeStatus.asr = "已加载";
+    renderRuntimeState();
     els.loadAsrModel.textContent = "ASR 模型已就绪";
     setModelProgress("ASR 模型已就绪。点击开始后，会用最近几秒音频生成字幕。");
   })().catch((error) => {
     console.error("ASR model load failed", error);
     setBadge(els.asrBadge, "ASR 下载失败", "bad");
+    runtimeStatus.asr = "失败";
+    renderRuntimeState();
     setModelProgress(`ASR 模型下载失败：${error.message ?? error}`);
     els.loadAsrModel.disabled = false;
     state.asrLoading = null;
   });
   return state.asrLoading;
+}
+
+async function selfTestModels() {
+  if (!state.translatorPipelines["zh-CN->en-US"] || !state.translatorPipelines["en-US->zh-CN"]) {
+    setModelProgress("请先点击“下载翻译模型”，等状态显示“翻译模型 已加载”后再自检。");
+    return;
+  }
+  els.selfTestModels.disabled = true;
+  try {
+    const previousSource = els.sourceLang.value;
+    const previousTarget = els.targetLang.value;
+    els.sourceLang.value = "zh-CN";
+    els.targetLang.value = "en-US";
+    const result = await translateText("你好，谢谢");
+    els.translationOutput.textContent = result;
+    els.manualInput.value = "你好，谢谢";
+    setModelProgress(`翻译自检完成：你好，谢谢 -> ${result}`);
+    els.sourceLang.value = previousSource;
+    els.targetLang.value = previousTarget;
+  } catch (error) {
+    setModelProgress(`翻译自检失败：${error.message ?? error}`);
+  } finally {
+    els.selfTestModels.disabled = false;
+  }
 }
 
 function getActiveInput() {
@@ -752,7 +813,7 @@ async function renderModelState() {
   if (!records.length) {
     const empty = document.createElement("div");
     empty.className = "model-item";
-    empty.textContent = "尚未导入模型文件";
+    empty.textContent = "未手动导入文件。这不影响上方按钮下载的模型。";
     els.modelState.append(empty);
     return;
   }
@@ -776,6 +837,7 @@ function bindEvents() {
   els.translateButton.addEventListener("click", () => runTranslation());
   els.loadTranslatorModels.addEventListener("click", loadTranslatorModels);
   els.loadAsrModel.addEventListener("click", loadAsrModel);
+  els.selfTestModels.addEventListener("click", selfTestModels);
 
   els.manualInput.addEventListener("input", () => {
     if (els.speechMode.value === "manual") runTranslation(els.manualInput.value);
@@ -810,6 +872,7 @@ async function boot() {
   bindEvents();
   setupInstallPrompt();
   updateOnlineStatus();
+  renderRuntimeState();
   renderModelPlan();
   renderHistory();
   await registerServiceWorker();
