@@ -19,6 +19,7 @@ const TRANSLATOR_MODELS = {
   "en-US->zh-CN": "Xenova/opus-mt-en-zh",
 };
 const ASR_MODEL = "Xenova/whisper-tiny";
+const ASR_WORKER_URL = "./asr-worker.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -70,12 +71,11 @@ const state = {
   transformers: null,
   translatorPipelines: {},
   translatorLoading: null,
-  asrPipeline: null,
+  asrWorker: null,
+  asrWorkerReady: false,
+  asrLastText: "",
   asrLoading: null,
-  audioChunks: [],
-  audioSampleCount: 0,
-  asrBusy: false,
-  lastAsrAt: 0,
+  audioModelEnabled: false,
   settings: loadJson("settings", {
     sourceLang: "zh-CN",
     targetLang: "en-US",
@@ -306,16 +306,16 @@ async function loadAsrModel() {
     runtimeStatus.asr = "下载中";
     renderRuntimeState();
     setBadge(els.asrBadge, "ASR 下载中", "warn");
-    const { pipeline } = await loadTransformers();
-    state.asrPipeline = await pipeline("automatic-speech-recognition", ASR_MODEL, {
-      dtype: "q8",
-      progress_callback: (event) => setModelProgress(progressText("ASR 模型", event)),
-    });
+    await ensureAsrWorker();
+    state.asrWorker.postMessage({ type: "load", model: ASR_MODEL, sourceLang: els.sourceLang.value });
+    await waitForAsrReady();
     setBadge(els.asrBadge, "ASR 模型", "good");
+    state.audioModelEnabled = true;
+    stopBrowserRecognition();
     runtimeStatus.asr = "已加载";
     renderRuntimeState();
     els.loadAsrModel.textContent = "ASR 模型已就绪";
-    setModelProgress("ASR 模型已就绪。点击开始后，会用最近几秒音频生成字幕。");
+    setModelProgress("ASR 模型已就绪。点击开始后，音频会送到后台 Worker 识别，音量条不再被推理阻塞。");
   })().catch((error) => {
     console.error("ASR model load failed", error);
     setBadge(els.asrBadge, "ASR 下载失败", "bad");
@@ -326,6 +326,83 @@ async function loadAsrModel() {
     state.asrLoading = null;
   });
   return state.asrLoading;
+}
+
+function ensureAsrWorker() {
+  if (state.asrWorker) return;
+  state.asrWorkerReady = false;
+  state.asrLastText = "";
+  state.asrWorker = new Worker(ASR_WORKER_URL, { type: "module" });
+  state.asrWorker.onmessage = (event) => {
+    const message = event.data ?? {};
+    if (message.type === "progress") {
+      setModelProgress(progressText("ASR 模型", message.event));
+      return;
+    }
+    if (message.type === "ready") {
+      state.asrWorkerReady = true;
+      return;
+    }
+    if (message.type === "status") {
+      if (message.text) setModelProgress(message.text);
+      return;
+    }
+    if (message.type === "transcript") {
+      const text = normalizeTranscript(message.text);
+      if (!text || text === state.asrLastText) return;
+      state.asrLastText = text;
+      state.finalTranscript = text;
+      state.interimTranscript = "";
+      renderText();
+      runTranslation(text);
+      setBadge(els.asrBadge, "ASR 模型", "good");
+      return;
+    }
+    if (message.type === "error") {
+      setBadge(els.asrBadge, "ASR 失败", "bad");
+      setModelProgress(`ASR 错误：${message.message}`);
+    }
+  };
+  state.asrWorker.onerror = (error) => {
+    console.error("ASR worker failed", error);
+    setBadge(els.asrBadge, "ASR Worker 失败", "bad");
+    runtimeStatus.asr = "失败";
+    renderRuntimeState();
+  };
+}
+
+function waitForAsrReady() {
+  if (state.asrWorkerReady) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("ASR 模型加载超时"));
+    }, 180000);
+    const worker = state.asrWorker;
+    const previousHandler = worker.onmessage;
+    function cleanup() {
+      window.clearTimeout(timeout);
+      worker.onmessage = previousHandler;
+    }
+    worker.onmessage = (event) => {
+      previousHandler(event);
+      const message = event.data ?? {};
+      if (message.type === "ready") {
+        cleanup();
+        resolve();
+      } else if (message.type === "error") {
+        cleanup();
+        reject(new Error(message.message || "ASR 模型加载失败"));
+      }
+    };
+  });
+}
+
+function normalizeTranscript(text) {
+  return String(text ?? "")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function selfTestModels() {
@@ -339,10 +416,13 @@ async function selfTestModels() {
     const previousTarget = els.targetLang.value;
     els.sourceLang.value = "zh-CN";
     els.targetLang.value = "en-US";
-    const result = await translateText("你好，谢谢");
-    els.translationOutput.textContent = result;
-    els.manualInput.value = "你好，谢谢";
-    setModelProgress(`翻译自检完成：你好，谢谢 -> ${result}`);
+    const zhEn = await translateText("你好，谢谢");
+    els.sourceLang.value = "en-US";
+    els.targetLang.value = "zh-CN";
+    const enZh = await translateText("Hello, thank you");
+    els.translationOutput.textContent = enZh;
+    els.manualInput.value = "Hello, thank you";
+    setModelProgress(`翻译自检完成：中译英 ${zhEn}；英译中 ${enZh}`);
     els.sourceLang.value = previousSource;
     els.targetLang.value = previousTarget;
   } catch (error) {
@@ -579,59 +659,15 @@ async function startMicrophoneMeter() {
 }
 
 function handlePcmChunk(samples) {
-  if (!state.asrPipeline) return;
-  state.audioChunks.push(samples);
-  state.audioSampleCount += samples.length;
-  const maxSamples = 16000 * 6;
-  while (state.audioSampleCount > maxSamples && state.audioChunks.length > 1) {
-    const removed = state.audioChunks.shift();
-    state.audioSampleCount -= removed.length;
-  }
-
-  const now = Date.now();
-  if (state.audioSampleCount >= 16000 * 2 && now - state.lastAsrAt > 1800 && !state.asrBusy) {
-    state.lastAsrAt = now;
-    runAsrOnRecentAudio();
-  }
-}
-
-function concatRecentAudio() {
-  const audio = new Float32Array(state.audioSampleCount);
-  let offset = 0;
-  for (const chunk of state.audioChunks) {
-    audio.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return audio;
-}
-
-async function runAsrOnRecentAudio() {
-  if (!state.asrPipeline || state.asrBusy) return;
-  state.asrBusy = true;
-  try {
-    setBadge(els.asrBadge, "识别中", "good");
-    const audio = concatRecentAudio();
-    const language = els.sourceLang.value === "zh-CN" ? "chinese" : "english";
-    const result = await state.asrPipeline(audio, {
-      language,
-      task: "transcribe",
-      chunk_length_s: 4,
-      stride_length_s: 1,
-    });
-    const text = (typeof result === "string" ? result : result?.text ?? "").trim();
-    if (text) {
-      state.finalTranscript = text;
-      state.interimTranscript = "";
-      renderText();
-      await runTranslation(text);
-    }
-    setBadge(els.asrBadge, "ASR 模型", "good");
-  } catch (error) {
-    console.warn("ASR failed", error);
-    setBadge(els.asrBadge, "ASR 失败", "bad");
-  } finally {
-    state.asrBusy = false;
-  }
+  if (!state.asrWorkerReady || !state.audioModelEnabled) return;
+  state.asrWorker.postMessage(
+    {
+      type: "audio",
+      sourceLang: els.sourceLang.value,
+      samples,
+    },
+    [samples.buffer],
+  );
 }
 
 function tickMeter() {
@@ -652,7 +688,13 @@ function tickMeter() {
 function startBrowserSpeechIfAvailable() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const mode = els.speechMode.value;
-  if (!SpeechRecognition || mode === "manual") {
+  if (state.audioModelEnabled || mode === "manual") {
+    if (state.audioModelEnabled) {
+      setBadge(els.asrBadge, "ASR 模型", "good");
+    }
+    return;
+  }
+  if (!SpeechRecognition) {
     if (!SpeechRecognition && mode !== "manual") {
       setBadge(els.asrBadge, "仅文本输入", "warn");
     }
@@ -711,17 +753,24 @@ function startBrowserSpeechIfAvailable() {
   }
 }
 
+function stopBrowserRecognition() {
+  if (!state.recognition) return;
+  state.recognition.onend = null;
+  try {
+    state.recognition.stop();
+  } catch (error) {
+    console.info("Browser speech stop failed", error);
+  }
+  state.recognition = null;
+}
+
 function stopCapture() {
   els.startButton.disabled = false;
   els.stopButton.disabled = true;
   setBadge(els.asrBadge, "待机", "neutral");
   els.meterFill.style.width = "0%";
 
-  if (state.recognition) {
-    state.recognition.onend = null;
-    state.recognition.stop();
-    state.recognition = null;
-  }
+  stopBrowserRecognition();
   if (state.meterFrame) {
     cancelAnimationFrame(state.meterFrame);
     state.meterFrame = 0;
@@ -743,8 +792,9 @@ function stopCapture() {
     state.audioContext = null;
   }
   state.analyser = null;
-  state.audioChunks = [];
-  state.audioSampleCount = 0;
+  if (state.asrWorkerReady) {
+    state.asrWorker.postMessage({ type: "reset" });
+  }
 }
 
 function syncSettings() {
@@ -853,6 +903,9 @@ function bindEvents() {
     el.addEventListener("change", () => {
       persistSettings();
       detectCapabilities();
+      if (state.asrWorkerReady) {
+        state.asrWorker.postMessage({ type: "config", sourceLang: els.sourceLang.value });
+      }
       if (getActiveInput()) runTranslation();
     });
   }

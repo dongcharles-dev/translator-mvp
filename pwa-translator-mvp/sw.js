@@ -1,9 +1,10 @@
-const CACHE_NAME = "mate30-translator-pwa-v6";
+const CACHE_NAME = "mate30-translator-pwa-v7";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./asr-worker.js",
   "./audio-worklet.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",

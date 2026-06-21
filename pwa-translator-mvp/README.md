@@ -10,6 +10,7 @@
 - 浏览器 ASR：如果当前浏览器支持 `SpeechRecognition`，会自动接入；如果支持 `processLocally`，优先请求端侧识别。
 - 离线翻译适配层：点击“下载翻译模型”后，会下载 `Xenova/opus-mt-zh-en` 和 `Xenova/opus-mt-en-zh` 并在浏览器里用 Transformers.js/ONNX Runtime Web 推理。
 - ASR 模型：点击“下载 ASR 模型”后，会下载 `Xenova/whisper-tiny`，点击开始后尝试用最近几秒音频生成字幕。
+- ASR 推理运行在 Web Worker 中，主线程只负责音量条和 UI，避免 Whisper 推理阻塞音频指示。
 - 高级模型包导入：文件选择框目前只把模型文件保存到 IndexedDB，供后续自定义推理适配器读取。
 - “未手动导入文件”不代表按钮下载的模型不可用。按钮下载的模型由 Transformers.js 和浏览器缓存管理，高级导入区只是预留入口。
 
@@ -52,6 +53,7 @@ Huawei Browser 真机测试建议部署到 HTTPS 静态站点，例如 Cloudflar
 - 翻译：`Xenova/opus-mt-zh-en` 和 `Xenova/opus-mt-en-zh`。
 - 音频输入：AudioWorklet 重采样到 16 kHz mono PCM，每 0.5 秒输出一段。
 - 实时字幕策略：前端聚合 2-4 秒滑窗，0.5 秒步进刷新字幕。
+- 如果 ASR 模型已加载，应用会优先使用自带 Whisper 模型，并关闭浏览器 `SpeechRecognition` 自动抢占，避免两个识别来源混在一起。
 
 不建议第一版使用 1B+ 通用大语言模型做翻译。它会明显增加首包、内存、发热和延迟，不适合 Mate30 Pro 上的实时字幕 MVP。
 
